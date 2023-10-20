@@ -6,6 +6,17 @@ The basics rely on two elements:
 1. A target release date
 2. A list of deltas between milestones
 
+# Build
+
+```console
+$ git clone https://github.com/fabiand/deltasched
+$ cd deltasched
+$ cargo build
+    Updating crates.io index
+…
+$ cargo run
+```
+
 # Example
 
 ```console
