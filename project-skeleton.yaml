@@ -5,30 +5,59 @@ phases:
   - name: Requirements Gathering
     alias: RG
     due_date: null
+    fixed: false
   - name: Requirements Freeze
     alias: RF
     due_date: null
+    fixed: false
 - name: Development
   milestones:
-  - name: Feature Start
-    alias: FS
+  - name: KubeVirt Feature Freeze
+    alias: KV
     due_date: null
+    fixed: true
   - name: Feature Freeze
     alias: FF
     due_date: null
+    fixed: false
 - name: Testing
   milestones:
   - name: Blockers Only
     alias: BO
     due_date: null
+    fixed: false
   - name: Code Freeze
     alias: CF
     due_date: null
+    fixed: false
 - name: Release
   milestones:
   - name: Push to Stage
     alias: PS
     due_date: null
+    fixed: false
   - name: General Availability
     alias: GA
     due_date: null
+    fixed: false
+milestone_deltas:
+- from: GA
+  to: CF
+  length:
+    count: 4
+    unit: Weeks
+- from: CF
+  to: BO
+  length:
+    count: 1
+    unit: Sprints
+- from: BO
+  to: FF
+  length:
+    count: 1
+    unit: Sprints
+- from: FF
+  to: RF
+  length:
+    count: 6
+    unit: Sprints
