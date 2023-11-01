@@ -44,9 +44,74 @@ impl fmt::Display for Milestone {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+pub struct MilestoneGenerator {
+    pub name: String,
+    pub count: u32,
+    pub cadence: DeltaLength,
+    pub template: Milestone
+}
+impl MilestoneGenerator {
+    fn generate_milestones(&self) -> (Vec<MilestoneDelta>, Vec<Milestone>) {
+        debug!("Calling milestone generator {}", self.name);
+        let mut milestones = Vec::new();
+        let mut deltas = Vec::new();
+
+        for counter in 1..self.count+1 {
+            let alias = format!("{}{}", self.template.alias.clone(), counter);
+
+            debug!("Generating milestone {}", alias);
+
+            milestones.push(Milestone{
+                alias: alias.clone(),
+                due_date: None,
+                name: "".to_string(),
+                ..self.template
+            });
+
+            deltas.push(MilestoneDelta{
+                from: "GA".to_string(),
+                to: alias.clone(),
+                length: DeltaLength {
+                    count: self.cadence.count * counter as i64 * -1,
+                    unit: self.cadence.unit.clone()
+                }
+            });
+        }
+        (deltas, milestones)
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Phase {
     pub name: String,
-    pub milestones: Vec<Milestone>
+    pub milestones: Vec<Milestone>,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "milestoneGenerators")]
+    pub milestone_generators: Option<Vec<MilestoneGenerator>>,
+}
+impl Phase {
+    fn generate_milestones(&mut self) -> Vec<MilestoneDelta>{
+        debug!("Generating milestone of phase {}", self.name);
+
+        //if self.milestones_generated { return
+        let mut milestones = Vec::new();
+        let mut more_deltas = Vec::new();
+        
+        if self.milestone_generators.is_none() {
+            debug!("No milestone generator");
+            return more_deltas;
+        };
+
+        for g in self.milestone_generators.as_ref().unwrap().iter() {
+            let (deltas, more_milestones) = g.generate_milestones();
+            milestones.extend(more_milestones);
+            more_deltas.extend(deltas);
+        }
+
+        self.milestones.extend(milestones);
+
+        debug!("More deltas {:?}", more_deltas);
+        more_deltas
+    }
 }
 impl fmt::Display for Phase {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -64,6 +129,14 @@ pub struct Schedule {
     pub milestone_deltas: Vec<MilestoneDelta>
 }
 impl Schedule {
+    pub fn generate(&mut self) {
+        debug!("Generating");
+        for mut p in self.phases.iter_mut() {
+            let more_deltas = p.generate_milestones();
+            self.milestone_deltas.extend(more_deltas);
+        }
+    }
+
     pub fn milestone(&mut self, alias_or_name: &str) -> Result<&mut Milestone, String> {
         for p in &mut self.phases {
             for m in &mut p.milestones {
@@ -160,7 +233,8 @@ impl PhaseBuilder {
     fn default() -> Phase {
         Phase {
             name: String::from(""),
-            milestones: vec![]
+            milestones: vec![],
+            milestone_generators: None
         }
     }
     pub fn planning() -> Phase {
@@ -195,6 +269,25 @@ impl PhaseBuilder {
             ..PhaseBuilder::default()
         }
     }
+    pub fn maintenance() -> Phase {
+        Phase {
+            name: String::from("Maintenance"),
+            milestones: vec![],
+            milestone_generators: Some(vec![
+                MilestoneGenerator {
+                    name: "zstreams".to_string(),
+                    count: 10,
+                    cadence: DeltaLength::new(4, "weeks"),
+                    template: Milestone {
+                        name: "zstream".to_string(),
+                        alias: "z".to_string(),
+                        due_date: None
+                    }
+                }
+                ]),
+            ..PhaseBuilder::default()
+        }
+    }
 
 }
 
@@ -208,6 +301,7 @@ impl ScheduleBuilder {
             PhaseBuilder::development(),
             PhaseBuilder::testing(),
             PhaseBuilder::release(),
+            PhaseBuilder::maintenance(),
         ]
     }
     fn common_deltas() -> Vec<MilestoneDelta> {
@@ -292,6 +386,8 @@ fn plan_backwards(sched: &Schedule, target: Option<(&str, NaiveDate)>) -> Result
     let mut draft = sched.clone();
     //debug!("Planning backwards of {}", draft.metadata.entry("name"));
 
+    draft.generate();
+
     if let Some((milestone_alias, due_date)) = target {
         debug!("Target is provided: {} on {}", milestone_alias, due_date);
         let target = draft.milestone(&milestone_alias)?;
@@ -326,6 +422,8 @@ fn plan_backwards(sched: &Schedule, target: Option<(&str, NaiveDate)>) -> Result
             } else {
                 debug!("… not applied");
             }
+        } else {
+            debug!("No due date");
         }
     }
     Ok(draft)
