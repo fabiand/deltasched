@@ -72,7 +72,7 @@ impl MilestoneGenerator {
                 from: "GA".to_string(),
                 to: alias.clone(),
                 length: DeltaLength {
-                    count: self.cadence.count * counter as i64 * -1,
+                    count: self.cadence.count * counter as i64,
                     unit: self.cadence.unit.clone()
                 }
             });
