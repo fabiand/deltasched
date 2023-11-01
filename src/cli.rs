@@ -30,7 +30,7 @@ pub enum Commands {
         /// The schedule skeleton to use
         #[arg(long)]
         from_skeleton: String,
-        /// The known dates, a tuple of <milestone alias>:<yyyy-mm-dd>
+        /// The known date, a tuple of <milestone alias>:<yyyy-mm-dd>
         #[arg(long)]
         with_due_date: String
     },

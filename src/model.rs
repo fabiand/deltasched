@@ -3,28 +3,27 @@ use std::ops;
 use chrono::{Duration,NaiveDate};
 use serde::{Serialize, Deserialize};
 use serde_yaml;
+use log::{debug};
+use std::collections::HashMap;
+use std::collections::HashSet;
 
-fn NoNaiveDate() -> Option<NaiveDate> { None }
-fn NotFixed() -> bool { false }
+fn no_naivedate() -> Option<NaiveDate> { None }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct DraftMilestone {
+pub struct Milestone {
     pub name: String,
     pub alias: String,
-    #[serde(default = "NoNaiveDate")]
+    #[serde(default = "no_naivedate", skip_serializing_if = "Option::is_none")]
     pub due_date: Option<NaiveDate>,
-    #[serde(default = "NotFixed")]
-    pub fixed: bool
 }
-impl DraftMilestone {
-    pub fn new(name: &str, alias: &str) -> DraftMilestone {
-        DraftMilestone{name: String::from(name),
+impl Milestone {
+    pub fn new(name: &str, alias: &str) -> Milestone {
+        Milestone{name: String::from(name),
                        alias: String::from(alias),
-                       due_date: None,
-                       fixed: false}
+                       due_date: None}
     }
 }
-impl ops::Sub<Duration> for &mut DraftMilestone {
+impl ops::Sub<Duration> for &mut Milestone {
     type Output = Result<NaiveDate, String>;
 
     fn sub(self, _rhs: Duration) -> Result<NaiveDate, String> {
@@ -34,26 +33,22 @@ impl ops::Sub<Duration> for &mut DraftMilestone {
         Ok(self.due_date.unwrap() - _rhs)
     }
 }
-impl fmt::Display for DraftMilestone {
+impl fmt::Display for Milestone {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let due_date = if self.due_date.is_none()
           { String::from("????-??-?? ???") }
           else
           { format!("{}", self.due_date.unwrap().format("%Y-%m-%d %a")) };
-        if self.fixed {
-            write!(f, " {}   {}   {}", due_date, self.alias, self.name)
-        } else {
-            write!(f, "({})  {}   {}", due_date, self.alias, self.name)
-        }
+          write!(f, " {}   {}   {}", due_date, self.alias, self.name)
     }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct DraftPhase {
+pub struct Phase {
     pub name: String,
-    pub milestones: Vec<DraftMilestone>
+    pub milestones: Vec<Milestone>
 }
-impl fmt::Display for DraftPhase {
+impl fmt::Display for Phase {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "{}", self.name)?;
         for ms in &self.milestones {
@@ -64,13 +59,12 @@ impl fmt::Display for DraftPhase {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct DraftSchedule {
-    pub name: String,
-    pub phases: Vec<DraftPhase>,
+pub struct Schedule {
+    pub phases: Vec<Phase>,
     pub milestone_deltas: Vec<MilestoneDelta>
 }
-impl DraftSchedule {
-    pub fn milestone(&mut self, alias_or_name: &str) -> Result<&mut DraftMilestone, String> {
+impl Schedule {
+    pub fn milestone(&mut self, alias_or_name: &str) -> Result<&mut Milestone, String> {
         for p in &mut self.phases {
             for m in &mut p.milestones {
                 if m.alias == alias_or_name || m.name == alias_or_name {
@@ -80,16 +74,10 @@ impl DraftSchedule {
         }
         Err(format!("Milestone '{}' not found.", alias_or_name))
     }
-
-    pub fn as_yaml(&self) -> String {
-        format!("{}", serde_yaml::to_string(&self).unwrap())
-    }
 }
-impl fmt::Display for DraftSchedule {
+impl fmt::Display for Schedule {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "# '{}' Schedule", self.name)?;
-
-        writeln!(f, "## Timeline")?;
+        writeln!(f, "## Phases & Milestones")?;
         for p in &self.phases {
             writeln!(f, "- {}", p)?
         }
@@ -106,16 +94,17 @@ impl fmt::Display for DraftSchedule {
     }
 }
 
-#[derive(Serialize,Deserialize)]
-enum DocumentKind {
-    Schedule(DraftSchedule)
-}
-
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Document {
     pub kind: String,
-    pub spec: DraftSchedule,
-    pub status: Option<DraftSchedule>
+    pub metadata: HashMap<String, String>,
+    pub spec: Schedule,
+    pub status: Option<DocumentStatus>
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DocumentStatus {
+    pub phases: Vec<Phase>
 }
 
 impl Document {
@@ -127,8 +116,40 @@ impl Document {
     pub fn as_yaml(&self) -> String {
         format!("{}", serde_yaml::to_string(&self).unwrap())
     }
+    pub fn example() -> Document {
+        Document {
+            kind: "Schedule".to_string(),
+            metadata: HashMap::from([
+                ("name".to_string(), "example".to_string())
+                ]),
+            spec: ScheduleBuilder::schedule(),
+            status: None
+        }
+    }
+    pub fn replan(&mut self, target: Option<(&str, NaiveDate)>) {
+        let new_sched = plan_backwards(&self.spec, target).unwrap();
+        let computed_phases = new_sched.phases;
+        self.status = Some(DocumentStatus {
+            phases: computed_phases
+        })
+    }
 }
-
+impl fmt::Display for Document {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "# Kind")?;
+        writeln!(f, "kind: {}\n", &self.kind)?;
+        writeln!(f, "# Metadata")?;
+        writeln!(f, "{}", serde_yaml::to_string(&self.metadata).unwrap())?;
+        writeln!(f, "# Spec")?;
+        writeln!(f, "{}", &self.spec)?;
+        writeln!(f, "# Status")?;
+        writeln!(f, "## Phases & Milestones")?;
+        for p in &self.status.as_ref().unwrap().phases {
+            writeln!(f, "- {}", p)?
+        }
+        Ok(())
+    }
+}
 
 /*
  * Builders
@@ -136,41 +157,41 @@ impl Document {
 pub struct PhaseBuilder {}
 
 impl PhaseBuilder {
-    fn default() -> DraftPhase {
-        DraftPhase {
+    fn default() -> Phase {
+        Phase {
             name: String::from(""),
             milestones: vec![]
         }
     }
-    pub fn planning() -> DraftPhase {
-        DraftPhase {
+    pub fn planning() -> Phase {
+        Phase {
             name: String::from("Planning"),
-            milestones: vec![DraftMilestone::new("Requirements Gathering", "RG"),
-                DraftMilestone::new("Requirements Freeze", "RF")],
+            milestones: vec![Milestone::new("Requirements Gathering", "RG"),
+                Milestone::new("Requirements Freeze", "RF")],
             ..PhaseBuilder::default()
         }
     }
-    pub fn development() -> DraftPhase {
-        DraftPhase {
+    pub fn development() -> Phase {
+        Phase {
             name: String::from("Development"),
-            milestones: vec![DraftMilestone::new("Feature Start", "FS"),
-                DraftMilestone::new("Feature Freeze", "FF")],
+            milestones: vec![Milestone::new("Feature Start", "FS"),
+                Milestone::new("Feature Freeze", "FF")],
             ..PhaseBuilder::default()
         }
     }
-    pub fn testing() -> DraftPhase {
-        DraftPhase {
+    pub fn testing() -> Phase {
+        Phase {
             name: String::from("Testing"),
-            milestones: vec![DraftMilestone::new("Blockers Only", "BO"),
-                DraftMilestone::new("Code Freeze", "CF")],
+            milestones: vec![Milestone::new("Blockers Only", "BO"),
+                Milestone::new("Code Freeze", "CF")],
             ..PhaseBuilder::default()
         }
     }
-    pub fn release() -> DraftPhase {
-        DraftPhase {
+    pub fn release() -> Phase {
+        Phase {
             name: String::from("Release"),
-            milestones: vec![DraftMilestone::new("Push to Stage", "PS"),
-                DraftMilestone::new("General Availability", "GA")],
+            milestones: vec![Milestone::new("Push to Stage", "PS"),
+                Milestone::new("General Availability", "GA")],
             ..PhaseBuilder::default()
         }
     }
@@ -181,7 +202,7 @@ pub struct ScheduleBuilder {
 }
 
 impl ScheduleBuilder {
-    fn common_phases() -> Vec<DraftPhase> {
+    fn common_phases() -> Vec<Phase> {
         vec![
             PhaseBuilder::planning(),
             PhaseBuilder::development(),
@@ -197,18 +218,12 @@ impl ScheduleBuilder {
             MilestoneDelta::new("FF", "RF", (6, "sprints"))
         ]
     }
-    pub fn schedule() -> DraftSchedule {
-        let draft = DraftSchedule {
-            name: String::from("TBD"),
+    pub fn schedule() -> Schedule {
+        let draft = Schedule {
             phases: ScheduleBuilder::common_phases(),
             milestone_deltas: ScheduleBuilder::common_deltas()
         };
         draft
-    }
-    pub fn from_yaml_file(filename: String) -> DraftSchedule {
-        let f = std::fs::File::open(filename).unwrap();
-        let parsed_draft: DraftSchedule = serde_yaml::from_reader(f).unwrap();
-        parsed_draft
     }
 }
 
@@ -268,6 +283,52 @@ impl DeltaLength {
             DeltaLengthUnit::Sprints => Duration::weeks(self.count) * 3
         }
     }
+}
+
+/// Plan backwards from a given target date
+/// Instead of building up a schedule, we look at when we want to release the target)
+/// and then backtrack the milestone due dates leading up to this target
+fn plan_backwards(sched: &Schedule, target: Option<(&str, NaiveDate)>) -> Result<Schedule, String> {
+    let mut draft = sched.clone();
+    //debug!("Planning backwards of {}", draft.metadata.entry("name"));
+
+    if let Some((milestone_alias, due_date)) = target {
+        debug!("Target is provided: {} on {}", milestone_alias, due_date);
+        let target = draft.milestone(&milestone_alias)?;
+        target.due_date = Some(due_date);
+    } else {
+        debug!("No target was provided");
+    }
+
+    {
+        // Ensure that we don't have deltas for the same
+        // MS combo twice
+        let num_deltas = draft.milestone_deltas.len();
+        let num_unique_deltas = draft.milestone_deltas
+            .iter()
+            .map(|m| (&m.from, &m.to))
+            .collect::<HashSet<(&String, &String)>>().len();
+
+        assert_eq!(num_deltas, num_unique_deltas,
+                   "There seems to be a milestone delta dupe");
+    }
+
+    for delta in draft.milestone_deltas.clone() {
+        debug!("Found delta {:?}", &delta);
+        let from = draft.milestone(&delta.from)?;
+        if let Some(from_due_date) = from.due_date {
+            let to_due_date = from_due_date - delta.length.to_duration();
+            let to_milestone = draft.milestone(&delta.to)?;
+            debug!("Computed due {} for {}", to_due_date, to_milestone.alias);
+            if to_milestone.due_date.is_none() { 
+                debug!("… applied");
+                to_milestone.due_date = Some(to_due_date)
+            } else {
+                debug!("… not applied");
+            }
+        }
+    }
+    Ok(draft)
 }
 
 
