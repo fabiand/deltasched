@@ -47,8 +47,8 @@ impl fmt::Display for Milestone {
 pub struct MilestoneGenerator {
     pub name: String,
     pub count: u32,
-    pub cadence: DeltaLength,
-    pub template: Milestone
+    pub deltaTemplate: MilestoneDelta,
+    pub milestoneTemplate: Milestone
 }
 impl MilestoneGenerator {
     fn generate_milestones(&self) -> (Vec<MilestoneDelta>, Vec<Milestone>) {
@@ -57,7 +57,7 @@ impl MilestoneGenerator {
         let mut deltas = Vec::new();
 
         for counter in 1..self.count+1 {
-            let alias = format!("{}{}", self.template.alias.clone(), counter);
+            let alias = format!("{}{}", self.milestoneTemplate.alias.clone(), counter);
 
             debug!("Generating milestone {}", alias);
 
@@ -65,15 +65,23 @@ impl MilestoneGenerator {
                 alias: alias.clone(),
                 due_date: None,
                 name: "".to_string(),
-                ..self.template
+                ..self.milestoneTemplate
             });
 
-            deltas.push(MilestoneDelta{
-                from: "GA".to_string(),
-                to: alias.clone(),
-                length: DeltaLength {
-                    count: self.cadence.count * counter as i64,
-                    unit: self.cadence.unit.clone()
+            let by = match &self.deltaTemplate {
+                MilestoneDelta::Behind{by, ..} => by.clone(),
+                MilestoneDelta::AheadOf{by, ..} => by.clone()
+            };
+            deltas.push(match &self.deltaTemplate {
+                MilestoneDelta::Behind{by, behind, ..} => MilestoneDelta::Behind {
+                    milestone: alias.clone(),
+                    behind: behind.clone(),            
+                    by: by.clone() * counter as i64
+                },
+                MilestoneDelta::AheadOf{by, ahead_of, ..} => MilestoneDelta::AheadOf {
+                    milestone: alias.clone(),
+                    ahead_of: ahead_of.clone(),            
+                    by: by.clone() * counter as i64
                 }
             });
         }
@@ -131,7 +139,7 @@ pub struct Schedule {
 impl Schedule {
     pub fn generate(&mut self) {
         debug!("Generating");
-        for mut p in self.phases.iter_mut() {
+        for p in self.phases.iter_mut() {
             let more_deltas = p.generate_milestones();
             self.milestone_deltas.extend(more_deltas);
         }
@@ -160,7 +168,14 @@ impl fmt::Display for Schedule {
         // make it ore natural to read the output
         // The output will be from oldest to most recent
         for d in self.milestone_deltas.iter().rev() {
-            writeln!(f, "- {} to {}: {}", d.to, d.from, d.length)?
+            match d {
+                MilestoneDelta::Behind{milestone, behind, by} => {
+                    writeln!(f, "- {} behind {}: {}", milestone, behind, by)?;
+                },
+                MilestoneDelta::AheadOf{milestone, ahead_of, by} => {
+                    writeln!(f, "- {} ahead_of {}: {}", milestone, ahead_of, by)?;
+                }
+            }
         }
 
         Ok(())
@@ -277,8 +292,12 @@ impl PhaseBuilder {
                 MilestoneGenerator {
                     name: "zstreams".to_string(),
                     count: 10,
-                    cadence: DeltaLength::new(4, "weeks"),
-                    template: Milestone {
+                    deltaTemplate: MilestoneDelta::Behind {
+                        milestone: "z".to_string(),
+                        behind: "GA".to_string(),
+                        by: SimpleDuration::Weeks{weeks: 4}
+                    },
+                    milestoneTemplate: Milestone {
                         name: "zstream".to_string(),
                         alias: "z".to_string(),
                         due_date: None
@@ -306,10 +325,10 @@ impl ScheduleBuilder {
     }
     fn common_deltas() -> Vec<MilestoneDelta> {
         vec![
-            MilestoneDelta::new("GA", "CF", (4, "weeks")),
-            MilestoneDelta::new("CF", "BO", (1, "sprint")),
-            MilestoneDelta::new("BO", "FF", (1, "sprint")),
-            MilestoneDelta::new("FF", "RF", (6, "sprints"))
+            MilestoneDelta::new_behind("GA", "CF", SimpleDuration::Weeks{weeks: 4}),
+            MilestoneDelta::new_behind("CF", "BO", SimpleDuration::Sprints{sprints: 1}),
+            MilestoneDelta::new_behind("BO", "FF", SimpleDuration::Sprints{sprints: 1}), 
+            MilestoneDelta::new_behind("FF", "RF", SimpleDuration::Sprints{sprints: 6}),
         ]
     }
     pub fn schedule() -> Schedule {
@@ -321,67 +340,108 @@ impl ScheduleBuilder {
     }
 }
 
+
+pub type MilestoneAliasOrName = String;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct MilestoneDelta {
-    pub from: String,
-    pub to: String,
-    pub length: DeltaLength
+#[serde(untagged)]
+pub enum SimpleDuration {
+    Weeks {
+        weeks: i64
+    },
+    Sprints {
+        sprints: i64
+    }
+}
+impl SimpleDuration {
+    pub fn to_duration(self) -> Duration {
+        match self {
+            SimpleDuration::Weeks{weeks} => Duration::weeks(weeks),
+            SimpleDuration::Sprints{sprints} => Duration::weeks(sprints*3)
+        }
+    }
+}
+impl ops::Mul<i64> for SimpleDuration {
+    type Output = SimpleDuration;
+
+    fn mul(self, _rhs: i64) -> SimpleDuration {
+        match self {
+            SimpleDuration::Weeks{weeks} => Self::Weeks{weeks: weeks * _rhs},
+            SimpleDuration::Sprints{sprints} => Self::Sprints{sprints: sprints * _rhs},
+        }
+    }
+}
+
+impl fmt::Display for SimpleDuration {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SimpleDuration::Weeks{weeks} => {
+                write!(f, "{} weeks", weeks)
+            },
+            SimpleDuration::Sprints{sprints} => {
+                write!(f, "{} sprints", sprints)
+            }
+        }
+    }
+} 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_a() {
+        let d = MilestoneDelta::Behind{
+            milestone: "bar".to_string(),
+            behind: "bar".to_string(),
+            by: SimpleDuration::Weeks{weeks: 4}
+        };
+        let n = format!("{}", serde_yaml::to_string(&d).unwrap());
+        assert_eq!("{}", n);
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum MilestoneDelta {
+    Behind {
+        milestone: MilestoneAliasOrName,
+        behind: MilestoneAliasOrName,
+        by: SimpleDuration
+    },
+    AheadOf {
+        milestone: MilestoneAliasOrName,
+        ahead_of: MilestoneAliasOrName,
+        by: SimpleDuration
+    }
 }
 impl MilestoneDelta {
-    pub fn new(from: &str, to: &str, length: (i64, &str)) -> MilestoneDelta {
-        MilestoneDelta{
-            from: from.to_string(),
-            to: to.to_string(),
-            length: DeltaLength::new(length.0, length.1)
+    pub fn new_behind(milestone: &str, behind: &str, by: SimpleDuration) -> MilestoneDelta {
+        MilestoneDelta::Behind {
+            milestone: milestone.to_string(),
+            behind: behind.to_string(),
+            by: by
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct DeltaLength {
-    count: i64,
-    unit: DeltaLengthUnit
-}
-impl fmt::Display for DeltaLength {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {:?}", self.count, self.unit)
-    }
-}
-
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-enum DeltaLengthUnit {
-    Weeks,
-    Sprints
-}
-impl DeltaLengthUnit {
-    fn parse(unit_str: &str) -> DeltaLengthUnit {
-        if unit_str.to_lowercase().starts_with("s") {
-            DeltaLengthUnit::Sprints
-        } else {
-            DeltaLengthUnit::Weeks
-        }
-    }
-}
-
-impl DeltaLength {
-    fn new(count: i64, unit: &str) -> DeltaLength {
-        DeltaLength {
-            count,
-            unit: DeltaLengthUnit::parse(unit)
+    pub fn new_ahead_of(milestone: &str, ahead_of: &str, by: SimpleDuration) -> MilestoneDelta {
+        MilestoneDelta::AheadOf {
+            milestone: milestone.to_string(),
+            ahead_of: ahead_of.to_string(),
+            by: by
         }
     }
     pub fn to_duration(self) -> Duration {
-        match self.unit {
-            DeltaLengthUnit::Weeks => Duration::weeks(self.count),
-            DeltaLengthUnit::Sprints => Duration::weeks(self.count) * 3
+        match self {
+            MilestoneDelta::Behind{by, ..} => by.to_duration(),
+            MilestoneDelta::AheadOf{by, ..} => by.to_duration(),
         }
     }
 }
 
+
 /// Plan backwards from a given target date
 /// Instead of building up a schedule, we look at when we want to release the target)
-/// and then backtrack the milestone due dates leading up to this target
+/// and then backtrack the milestone due dates ahead_ofing up to this target
 fn plan_backwards(sched: &Schedule, target: Option<(&str, NaiveDate)>) -> Result<Schedule, String> {
     let mut draft = sched.clone();
     //debug!("Planning backwards of {}", draft.metadata.entry("name"));
@@ -402,7 +462,12 @@ fn plan_backwards(sched: &Schedule, target: Option<(&str, NaiveDate)>) -> Result
         let num_deltas = draft.milestone_deltas.len();
         let num_unique_deltas = draft.milestone_deltas
             .iter()
-            .map(|m| (&m.from, &m.to))
+            .map(|m| {
+                match m {
+                    MilestoneDelta::Behind{milestone, behind, ..} => (milestone, behind),
+                    MilestoneDelta::AheadOf{milestone, ahead_of, ..} => (milestone, ahead_of)
+                }
+            })
             .collect::<HashSet<(&String, &String)>>().len();
 
         assert_eq!(num_deltas, num_unique_deltas,
@@ -411,19 +476,33 @@ fn plan_backwards(sched: &Schedule, target: Option<(&str, NaiveDate)>) -> Result
 
     for delta in draft.milestone_deltas.clone() {
         debug!("Found delta {:?}", &delta);
-        let from = draft.milestone(&delta.from)?;
-        if let Some(from_due_date) = from.due_date {
-            let to_due_date = from_due_date - delta.length.to_duration();
-            let to_milestone = draft.milestone(&delta.to)?;
-            debug!("Computed due {} for {}", to_due_date, to_milestone.alias);
-            if to_milestone.due_date.is_none() { 
+
+        let (milestone_str, target_str, by, before_target) = match &delta {
+            MilestoneDelta::Behind{milestone, behind, by} =>
+                (milestone, behind, by.clone(), true),
+            MilestoneDelta::AheadOf{milestone, ahead_of, by} =>
+                (milestone, ahead_of, by.clone(), false)
+        };
+
+        let target = draft.milestone(target_str)?;
+
+        if let Some(target_due_date) = target.due_date {
+            let new_due_date = if before_target {
+                target_due_date - by.to_duration()
+            } else {
+                target_due_date + by.to_duration()
+            };
+            let milestone = draft.milestone(milestone_str)?;
+            debug!("Computed due {} for {}", new_due_date, milestone.alias);
+            if milestone.due_date.is_none() { 
                 debug!("… applied");
-                to_milestone.due_date = Some(to_due_date)
+                milestone.due_date = Some(new_due_date)
             } else {
                 debug!("… not applied");
             }
         } else {
-            debug!("No due date");
+            debug!("Target {} has no du date, therefore the milestone due date can not be computed", target);
+            debug!("Target has no due date");
         }
     }
     Ok(draft)
