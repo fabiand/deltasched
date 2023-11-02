@@ -1,6 +1,6 @@
 use std::fmt;
 use std::ops;
-use chrono::{Duration,NaiveDate};
+use chrono::{Local,Duration,NaiveDate};
 use serde::{Serialize, Deserialize};
 use serde_yaml;
 use log::{debug};
@@ -47,42 +47,35 @@ impl fmt::Display for Milestone {
 pub struct MilestoneGenerator {
     pub name: String,
     pub count: u32,
-    pub deltaTemplate: MilestoneDelta,
+    pub deltaTemplate: MilestoneRelation,
     pub milestoneTemplate: Milestone
 }
 impl MilestoneGenerator {
-    fn generate_milestones(&self) -> (Vec<MilestoneDelta>, Vec<Milestone>) {
+    fn generate_milestones(&self) -> (Vec<MilestoneRelation>, Vec<Milestone>) {
         debug!("Calling milestone generator {}", self.name);
         let mut milestones = Vec::new();
         let mut deltas = Vec::new();
 
         for counter in 1..self.count+1 {
-            let alias = format!("{}{}", self.milestoneTemplate.alias.clone(), counter);
+            let alias = format!("{}{}", &self.milestoneTemplate.alias, counter);
+            let name = format!("{}{}", &self.milestoneTemplate.name, counter);
 
             debug!("Generating milestone {}", alias);
 
             milestones.push(Milestone{
                 alias: alias.clone(),
                 due_date: None,
-                name: "".to_string(),
+                name: name.clone(),
                 ..self.milestoneTemplate
             });
 
-            let by = match &self.deltaTemplate {
-                MilestoneDelta::Behind{by, ..} => by.clone(),
-                MilestoneDelta::AheadOf{by, ..} => by.clone()
-            };
-            deltas.push(match &self.deltaTemplate {
-                MilestoneDelta::Behind{by, behind, ..} => MilestoneDelta::Behind {
+            let delta = &self.deltaTemplate;
+
+            deltas.push(MilestoneRelation {
                     milestone: alias.clone(),
-                    behind: behind.clone(),            
-                    by: by.clone() * counter as i64
-                },
-                MilestoneDelta::AheadOf{by, ahead_of, ..} => MilestoneDelta::AheadOf {
-                    milestone: alias.clone(),
-                    ahead_of: ahead_of.clone(),            
-                    by: by.clone() * counter as i64
-                }
+                    is: delta.is.clone(),
+                    target: delta.target.clone(),
+                    by: delta.by.clone() * counter as i64
             });
         }
         (deltas, milestones)
@@ -97,7 +90,7 @@ pub struct Phase {
     pub milestone_generators: Option<Vec<MilestoneGenerator>>,
 }
 impl Phase {
-    fn generate_milestones(&mut self) -> Vec<MilestoneDelta>{
+    fn generate_milestones(&mut self) -> Vec<MilestoneRelation>{
         debug!("Generating milestone of phase {}", self.name);
 
         //if self.milestones_generated { return
@@ -134,7 +127,7 @@ impl fmt::Display for Phase {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Schedule {
     pub phases: Vec<Phase>,
-    pub milestone_deltas: Vec<MilestoneDelta>
+    pub milestone_deltas: Vec<MilestoneRelation>
 }
 impl Schedule {
     pub fn generate(&mut self) {
@@ -168,14 +161,7 @@ impl fmt::Display for Schedule {
         // make it ore natural to read the output
         // The output will be from oldest to most recent
         for d in self.milestone_deltas.iter().rev() {
-            match d {
-                MilestoneDelta::Behind{milestone, behind, by} => {
-                    writeln!(f, "- {} behind {}: {}", milestone, behind, by)?;
-                },
-                MilestoneDelta::AheadOf{milestone, ahead_of, by} => {
-                    writeln!(f, "- {} ahead_of {}: {}", milestone, ahead_of, by)?;
-                }
-            }
+            writeln!(f, "- {} {} {}: {}", d.milestone, d.is, d.target, d.by)?;
         }
 
         Ok(())
@@ -277,10 +263,12 @@ impl PhaseBuilder {
         }
     }
     pub fn release() -> Phase {
+        let now = Local::now().date_naive();
+        let mut ga = Milestone::new("General Availability", "GA");
+        ga.due_date = Some(now);
         Phase {
             name: String::from("Release"),
-            milestones: vec![Milestone::new("Push to Stage", "PS"),
-                Milestone::new("General Availability", "GA")],
+            milestones: vec![Milestone::new("Push to Stage", "PS"), ga],
             ..PhaseBuilder::default()
         }
     }
@@ -292,9 +280,10 @@ impl PhaseBuilder {
                 MilestoneGenerator {
                     name: "zstreams".to_string(),
                     count: 10,
-                    deltaTemplate: MilestoneDelta::Behind {
+                    deltaTemplate: MilestoneRelation {
                         milestone: "z".to_string(),
-                        behind: "GA".to_string(),
+                        is: Where::Behind,
+                        target: "GA".to_string(),
                         by: SimpleDuration::Weeks{weeks: 4}
                     },
                     milestoneTemplate: Milestone {
@@ -323,12 +312,12 @@ impl ScheduleBuilder {
             PhaseBuilder::maintenance(),
         ]
     }
-    fn common_deltas() -> Vec<MilestoneDelta> {
+    fn common_deltas() -> Vec<MilestoneRelation> {
         vec![
-            MilestoneDelta::new_behind("GA", "CF", SimpleDuration::Weeks{weeks: 4}),
-            MilestoneDelta::new_behind("CF", "BO", SimpleDuration::Sprints{sprints: 1}),
-            MilestoneDelta::new_behind("BO", "FF", SimpleDuration::Sprints{sprints: 1}), 
-            MilestoneDelta::new_behind("FF", "RF", SimpleDuration::Sprints{sprints: 6}),
+            MilestoneRelation::new("GA", Where::Behind, "CF", SimpleDuration::Weeks{weeks: 4}),
+            MilestoneRelation::new("CF", Where::Behind, "BO", SimpleDuration::Sprints{sprints: 1}),
+            MilestoneRelation::new("BO", Where::Behind, "FF", SimpleDuration::Sprints{sprints: 1}),
+            MilestoneRelation::new("FF", Where::Behind, "RF", SimpleDuration::Sprints{sprints: 6}),
         ]
     }
     pub fn schedule() -> Schedule {
@@ -341,7 +330,6 @@ impl ScheduleBuilder {
 }
 
 
-pub type MilestoneAliasOrName = String;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(untagged)]
@@ -391,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_a() {
-        let d = MilestoneDelta::Behind{
+        let d = MilestoneRelation::Behind{
             milestone: "bar".to_string(),
             behind: "bar".to_string(),
             by: SimpleDuration::Weeks{weeks: 4}
@@ -401,40 +389,41 @@ mod tests {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(untagged)]
-pub enum MilestoneDelta {
-    Behind {
-        milestone: MilestoneAliasOrName,
-        behind: MilestoneAliasOrName,
-        by: SimpleDuration
-    },
-    AheadOf {
-        milestone: MilestoneAliasOrName,
-        ahead_of: MilestoneAliasOrName,
-        by: SimpleDuration
+pub type MilestoneAliasOrName = String;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum Where {
+    Behind,
+    AheadOf
+}
+impl fmt::Display for Where {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match self {
+            Where::Behind => "behind",
+            Where::AheadOf => "aheadOf"
+        })
     }
 }
-impl MilestoneDelta {
-    pub fn new_behind(milestone: &str, behind: &str, by: SimpleDuration) -> MilestoneDelta {
-        MilestoneDelta::Behind {
+
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MilestoneRelation {
+    milestone: MilestoneAliasOrName,
+    is: Where,
+    target: MilestoneAliasOrName,
+    by: SimpleDuration
+}
+impl MilestoneRelation {
+    pub fn new(milestone: &str, is: Where, target: &str, by: SimpleDuration) -> MilestoneRelation {
+        MilestoneRelation {
             milestone: milestone.to_string(),
-            behind: behind.to_string(),
-            by: by
-        }
-    }
-    pub fn new_ahead_of(milestone: &str, ahead_of: &str, by: SimpleDuration) -> MilestoneDelta {
-        MilestoneDelta::AheadOf {
-            milestone: milestone.to_string(),
-            ahead_of: ahead_of.to_string(),
+            is: is,
+            target: target.to_string(),
             by: by
         }
     }
     pub fn to_duration(self) -> Duration {
-        match self {
-            MilestoneDelta::Behind{by, ..} => by.to_duration(),
-            MilestoneDelta::AheadOf{by, ..} => by.to_duration(),
-        }
+        self.by.to_duration()
     }
 }
 
@@ -462,12 +451,7 @@ fn plan_backwards(sched: &Schedule, target: Option<(&str, NaiveDate)>) -> Result
         let num_deltas = draft.milestone_deltas.len();
         let num_unique_deltas = draft.milestone_deltas
             .iter()
-            .map(|m| {
-                match m {
-                    MilestoneDelta::Behind{milestone, behind, ..} => (milestone, behind),
-                    MilestoneDelta::AheadOf{milestone, ahead_of, ..} => (milestone, ahead_of)
-                }
-            })
+            .map(|m| (&m.milestone, &m.target))
             .collect::<HashSet<(&String, &String)>>().len();
 
         assert_eq!(num_deltas, num_unique_deltas,
@@ -477,20 +461,15 @@ fn plan_backwards(sched: &Schedule, target: Option<(&str, NaiveDate)>) -> Result
     for delta in draft.milestone_deltas.clone() {
         debug!("Found delta {:?}", &delta);
 
-        let (milestone_str, target_str, by, before_target) = match &delta {
-            MilestoneDelta::Behind{milestone, behind, by} =>
-                (milestone, behind, by.clone(), true),
-            MilestoneDelta::AheadOf{milestone, ahead_of, by} =>
-                (milestone, ahead_of, by.clone(), false)
-        };
+        let (milestone_str, is, target_str, by) = (&delta.milestone, &delta.is, &delta.target, &delta.by);
 
         let target = draft.milestone(target_str)?;
 
         if let Some(target_due_date) = target.due_date {
-            let new_due_date = if before_target {
-                target_due_date - by.to_duration()
+            let new_due_date = if *is == Where::Behind {
+                target_due_date - by.clone().to_duration()
             } else {
-                target_due_date + by.to_duration()
+                target_due_date + by.clone().to_duration()
             };
             let milestone = draft.milestone(milestone_str)?;
             debug!("Computed due {} for {}", new_due_date, milestone.alias);
