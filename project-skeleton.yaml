@@ -1,72 +1,72 @@
 kind: Schedule
 metadata:
-  name: TBD
+  name: example
 spec:
   phases:
   - name: Planning
     milestones:
     - name: Requirements Gathering
       alias: RG
-      due_date: null
-      fixed: false
     - name: Requirements Freeze
       alias: RF
-      due_date: null
-      fixed: false
   - name: Development
     milestones:
-    - name: KubeVirt Feature Freeze
-      alias: KV
-      due_date: null
-      fixed: true
+    - name: Feature Start
+      alias: FS
     - name: Feature Freeze
       alias: FF
-      due_date: null
-      fixed: false
   - name: Testing
     milestones:
     - name: Blockers Only
       alias: BO
-      due_date: null
-      fixed: false
     - name: Code Freeze
       alias: CF
-      due_date: null
-      fixed: false
   - name: Release
     milestones:
     - name: Push to Stage
       alias: PS
-      due_date: null
-      fixed: false
     - name: General Availability
       alias: GA
-      due_date: null
-      fixed: false
+      due_date: 2023-11-02
+  - name: Maintenance
+    milestones: []
+    milestone_generators:
+    - name: zstreams
+      count: 10
+      delta_template:
+        milestone: z
+        is: After
+        target: GA
+        by:
+          weeks: 4
+      milestone_template:
+        name: zstream
+        alias: z
   milestone_deltas:
-  - from: GA
-    to: CF
-    length:
-      count: 4
-      unit: Weeks
-  - from: GA
-    to: PS
-    length:
-      count: 1
-      unit: Weeks
-  - from: CF
-    to: BO
-    length:
-      count: 1
-      unit: Sprints
-  - from: BO
-    to: FF
-    length:
-      count: 1
-      unit: Sprints
-  - from: FF
-    to: RF
-    length:
-      count: 6
-      unit: Sprints
+  - milestone: PS
+    is: Before
+    target: GA
+    by:
+      weeks: 1
+  - milestone: CF
+    is: Before
+    target: GA
+    by:
+      weeks: 4
+  - milestone: BO
+    is: Before
+    target: CF
+    by:
+      sprints: 1
+  - milestone: FF
+    is: Before
+    target: BO
+    by:
+      sprints: 1
+  - milestone: RF
+    is: Before
+    target: FF
+    by:
+      sprints: 6
 status: null
+

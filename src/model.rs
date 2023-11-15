@@ -22,13 +22,30 @@ impl Milestone {
                        alias: String::from(alias),
                        due_date: None}
     }
+    pub fn example() -> Milestone {
+        let mut e = Milestone::new("Example", "EX");
+        e.due_date = Some(Local::now().date_naive());
+        e
+    }
 }
-impl ops::Sub<Duration> for &mut Milestone {
+impl ops::Sub<Duration> for &Milestone {
+    /// Allow specifying a date based on a milestone
+    /// along the lines of "FF is 6 weeks before GA", to match
+    /// `CF = GA - 6_weeks`
+    ///
+    /// Example
+    /// ```
+    /// use model::*;
+    /// use chrono::Duration;
+    /// let mut m = Milestone::example();
+    /// let before = &m - Duration::weeks(3);
+    /// assert!(before.unwrap() < m.due_date.unwrap());
+    /// ```
     type Output = Result<NaiveDate, String>;
 
     fn sub(self, _rhs: Duration) -> Result<NaiveDate, String> {
         if self.due_date.is_none() {
-            return Err(String::from(format!("No due_date set for '{}'", self)))
+            return Err(String::from(format!("No due_date set for '{:?}'", self)))
         }
         Ok(self.due_date.unwrap() - _rhs)
     }
@@ -43,12 +60,20 @@ impl fmt::Display for Milestone {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
+/// A MilestoneGenerator is used to create Milestones according to a
+/// given delta.
+/// This is helpful for example when mapping out a repeating release
+/// like z-streams.
 pub struct MilestoneGenerator {
+    /// Name of the stream of milestones to generate
     pub name: String,
+    /// Number of milestones to create
     pub count: u32,
-    pub deltaTemplate: MilestoneRelation,
-    pub milestoneTemplate: Milestone
+    /// Milestone delta template
+    pub delta_template: MilestoneRelation,
+    /// Milestone template
+    pub milestone_template: Milestone
 }
 impl MilestoneGenerator {
     fn generate_milestones(&self) -> (Vec<MilestoneRelation>, Vec<Milestone>) {
@@ -57,8 +82,8 @@ impl MilestoneGenerator {
         let mut deltas = Vec::new();
 
         for counter in 1..self.count+1 {
-            let alias = format!("{}{}", &self.milestoneTemplate.alias, counter);
-            let name = format!("{}{}", &self.milestoneTemplate.name, counter);
+            let alias = format!("{}{}", &self.milestone_template.alias, counter);
+            let name = format!("{}{}", &self.milestone_template.name, counter);
 
             debug!("Generating milestone {}", alias);
 
@@ -66,10 +91,10 @@ impl MilestoneGenerator {
                 alias: alias.clone(),
                 due_date: None,
                 name: name.clone(),
-                ..self.milestoneTemplate
+                ..self.milestone_template
             });
 
-            let delta = &self.deltaTemplate;
+            let delta = &self.delta_template;
 
             deltas.push(MilestoneRelation {
                     milestone: alias.clone(),
@@ -82,7 +107,7 @@ impl MilestoneGenerator {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Phase {
     pub name: String,
     pub milestones: Vec<Milestone>,
@@ -124,7 +149,7 @@ impl fmt::Display for Phase {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Schedule {
     pub phases: Vec<Phase>,
     pub milestone_deltas: Vec<MilestoneRelation>
@@ -168,7 +193,7 @@ impl fmt::Display for Schedule {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Document {
     pub kind: String,
     pub metadata: HashMap<String, String>,
@@ -176,7 +201,7 @@ pub struct Document {
     pub status: Option<DocumentStatus>
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DocumentStatus {
     pub phases: Vec<Phase>
 }
@@ -280,13 +305,13 @@ impl PhaseBuilder {
                 MilestoneGenerator {
                     name: "zstreams".to_string(),
                     count: 10,
-                    deltaTemplate: MilestoneRelation {
+                    delta_template: MilestoneRelation {
                         milestone: "z".to_string(),
-                        is: Where::Behind,
+                        is: Where::After,
                         target: "GA".to_string(),
                         by: SimpleDuration::Weeks{weeks: 4}
                     },
-                    milestoneTemplate: Milestone {
+                    milestone_template: Milestone {
                         name: "zstream".to_string(),
                         alias: "z".to_string(),
                         due_date: None
@@ -314,10 +339,10 @@ impl ScheduleBuilder {
     }
     fn common_deltas() -> Vec<MilestoneRelation> {
         vec![
-            MilestoneRelation::new("GA", Where::Behind, "CF", SimpleDuration::Weeks{weeks: 4}),
-            MilestoneRelation::new("CF", Where::Behind, "BO", SimpleDuration::Sprints{sprints: 1}),
-            MilestoneRelation::new("BO", Where::Behind, "FF", SimpleDuration::Sprints{sprints: 1}),
-            MilestoneRelation::new("FF", Where::Behind, "RF", SimpleDuration::Sprints{sprints: 6}),
+            MilestoneRelation::new("GA", Where::After, "CF", SimpleDuration::Weeks{weeks: 4}),
+            MilestoneRelation::new("CF", Where::After, "BO", SimpleDuration::Sprints{sprints: 1}),
+            MilestoneRelation::new("BO", Where::After, "FF", SimpleDuration::Sprints{sprints: 1}),
+            MilestoneRelation::new("FF", Where::After, "RF", SimpleDuration::Sprints{sprints: 6}),
         ]
     }
     pub fn schedule() -> Schedule {
@@ -373,34 +398,18 @@ impl fmt::Display for SimpleDuration {
     }
 } 
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_a() {
-        let d = MilestoneRelation::Behind{
-            milestone: "bar".to_string(),
-            behind: "bar".to_string(),
-            by: SimpleDuration::Weeks{weeks: 4}
-        };
-        let n = format!("{}", serde_yaml::to_string(&d).unwrap());
-        assert_eq!("{}", n);
-    }
-}
-
 pub type MilestoneAliasOrName = String;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Where {
-    Behind,
-    AheadOf
+    After,
+    Before
 }
 impl fmt::Display for Where {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
-            Where::Behind => "behind",
-            Where::AheadOf => "aheadOf"
+            Where::After => "after",
+            Where::Before => "before"
         })
     }
 }
@@ -408,10 +417,10 @@ impl fmt::Display for Where {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MilestoneRelation {
-    milestone: MilestoneAliasOrName,
-    is: Where,
-    target: MilestoneAliasOrName,
-    by: SimpleDuration
+    pub milestone: MilestoneAliasOrName,
+    pub is: Where,
+    pub target: MilestoneAliasOrName,
+    pub by: SimpleDuration
 }
 impl MilestoneRelation {
     pub fn new(milestone: &str, is: Where, target: &str, by: SimpleDuration) -> MilestoneRelation {
@@ -433,7 +442,7 @@ impl MilestoneRelation {
 /// and then backtrack the milestone due dates ahead_ofing up to this target
 fn plan_backwards(sched: &Schedule, target: Option<(&str, NaiveDate)>) -> Result<Schedule, String> {
     let mut draft = sched.clone();
-    //debug!("Planning backwards of {}", draft.metadata.entry("name"));
+    debug!("Planning");
 
     draft.generate();
 
@@ -466,10 +475,10 @@ fn plan_backwards(sched: &Schedule, target: Option<(&str, NaiveDate)>) -> Result
         let target = draft.milestone(target_str)?;
 
         if let Some(target_due_date) = target.due_date {
-            let new_due_date = if *is == Where::Behind {
-                target_due_date - by.clone().to_duration()
-            } else {
+            let new_due_date = if *is == Where::After {
                 target_due_date + by.clone().to_duration()
+            } else {
+                target_due_date - by.clone().to_duration()
             };
             let milestone = draft.milestone(milestone_str)?;
             debug!("Computed due {} for {}", new_due_date, milestone.alias);
@@ -480,7 +489,7 @@ fn plan_backwards(sched: &Schedule, target: Option<(&str, NaiveDate)>) -> Result
                 debug!("… not applied");
             }
         } else {
-            debug!("Target {} has no du date, therefore the milestone due date can not be computed", target);
+            debug!("Target milestone {:?} has no du date, therefore the milestone due date can not be computed", target);
             debug!("Target has no due date");
         }
     }

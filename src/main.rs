@@ -7,8 +7,9 @@ use crate::cli::*;
 mod model;
 use crate::model::*;
 
-mod gantt;
+mod printer;
 
+mod gantt;
 
 fn main() {
     env_logger::init();
@@ -16,13 +17,15 @@ fn main() {
     let args = Args::parse();
 
     let print_schedule = |sched: &Document| {
+        let schedfmt = printer::ScheduleFormatter{};
         let output;
         match args.output {
             OutputFormat::Yaml => {
-                output = format!("{}", &sched.as_yaml());
+                output = format!("{}", &schedfmt.as_yaml(&sched));
             },
             OutputFormat::Human => {
-                output = format!("{}", &sched);
+//                output = format!("{}", &sched);
+                output = format!("{}", &schedfmt.as_text(&sched));
             }/*,
             OutputFormat::MermaidGantt => {
                 output = format!("{}", gantt::MermaidGanttPrinter(&sched));

@@ -3,6 +3,19 @@ name = "deltasched"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
+[libmodel]
+name = "model"
+path = "src/model.rs"
+
+[libprinter]
+name = "printer"
+path = "src/printer.rs"
+
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
