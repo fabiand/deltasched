@@ -1,8 +1,7 @@
 use std::fmt;
 use std::ops;
-use chrono::{Local,Duration,NaiveDate};
 use serde::{Serialize, Deserialize};
-use serde_yaml;
+use chrono::{Local,Duration,NaiveDate};
 use log::{debug};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -48,15 +47,6 @@ impl ops::Sub<Duration> for &Milestone {
             return Err(String::from(format!("No due_date set for '{:?}'", self)))
         }
         Ok(self.due_date.unwrap() - _rhs)
-    }
-}
-impl fmt::Display for Milestone {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let due_date = if self.due_date.is_none()
-          { String::from("????-??-?? ???") }
-          else
-          { format!("{}", self.due_date.unwrap().format("%Y-%m-%d %a")) };
-          write!(f, " {}   {}   {}", due_date, self.alias, self.name)
     }
 }
 
@@ -139,15 +129,6 @@ impl Phase {
         more_deltas
     }
 }
-impl fmt::Display for Phase {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "{}", self.name)?;
-        for ms in &self.milestones {
-            writeln!(f, "  - {}", ms)?
-        };
-        Ok(())
-    }
-}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Schedule {
@@ -174,24 +155,6 @@ impl Schedule {
         Err(format!("Milestone '{}' not found.", alias_or_name))
     }
 }
-impl fmt::Display for Schedule {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "## Phases & Milestones")?;
-        for p in &self.phases {
-            writeln!(f, "- {}", p)?
-        }
-
-        writeln!(f, "## Baseline Deltas")?;
-        // Note: We are reverting the order and to/from in order to
-        // make it ore natural to read the output
-        // The output will be from oldest to most recent
-        for d in self.milestone_deltas.iter().rev() {
-            writeln!(f, "- {} {} {}: {}", d.milestone, d.is, d.target, d.by)?;
-        }
-
-        Ok(())
-    }
-}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Document {
@@ -212,9 +175,6 @@ impl Document {
         let doc: Document = serde_yaml::from_reader(f).unwrap();
         doc
     }
-    pub fn as_yaml(&self) -> String {
-        format!("{}", serde_yaml::to_string(&self).unwrap())
-    }
     pub fn example() -> Document {
         Document {
             kind: "Schedule".to_string(),
@@ -231,22 +191,6 @@ impl Document {
         self.status = Some(DocumentStatus {
             phases: computed_phases
         })
-    }
-}
-impl fmt::Display for Document {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "# Kind")?;
-        writeln!(f, "kind: {}\n", &self.kind)?;
-        writeln!(f, "# Metadata")?;
-        writeln!(f, "{}", serde_yaml::to_string(&self.metadata).unwrap())?;
-        writeln!(f, "# Spec")?;
-        writeln!(f, "{}", &self.spec)?;
-        writeln!(f, "# Status")?;
-        writeln!(f, "## Phases & Milestones")?;
-        for p in &self.status.as_ref().unwrap().phases {
-            writeln!(f, "- {}", p)?
-        }
-        Ok(())
     }
 }
 
@@ -430,9 +374,6 @@ impl MilestoneRelation {
             target: target.to_string(),
             by: by
         }
-    }
-    pub fn to_duration(self) -> Duration {
-        self.by.to_duration()
     }
 }
 

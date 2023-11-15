@@ -23,29 +23,43 @@ $ cargo run
 $ cargo run -- -o human example
     Finished dev [unoptimized + debuginfo] target(s) in 0.06s
      Running `target/debug/deltasched -o human example`
-# 'TBD' Schedule
-## Timeline
+   Compiling deltasched v0.1.0 (/var/home/fabiand/work/deltasched)
+    Finished dev [unoptimized + debuginfo] target(s) in 1.91s
+     Running `target/debug/deltasched -o human example`
+# Kind
+kind: Schedule
+
+# Metadata
+name: example
+
+# Spec
+## Phases & Milestones
 - Planning
-  - (????-??-?? ???)  RG   Requirements Gathering
-  - (????-??-?? ???)  RF   Requirements Freeze
+  -  ????-??-?? ???   RG   Requirements Gathering
+  -  ????-??-?? ???   RF   Requirements Freeze
 
 - Development
-  - (????-??-?? ???)  FS   Feature Start
-  - (????-??-?? ???)  FF   Feature Freeze
+  -  ????-??-?? ???   FS   Feature Start
+  -  ????-??-?? ???   FF   Feature Freeze
 
 - Testing
-  - (????-??-?? ???)  BO   Blockers Only
-  - (????-??-?? ???)  CF   Code Freeze
+  -  ????-??-?? ???   BO   Blockers Only
+  -  ????-??-?? ???   CF   Code Freeze
 
 - Release
-  - (????-??-?? ???)  PS   Push to Stage
-  - (????-??-?? ???)  GA   General Availability
+  -  ????-??-?? ???   PS   Push to Stage
+  -  2023-11-02 Thu   GA   General Availability
+
+- Maintenance
 
 ## Baseline Deltas
-- RF to FF: 6 Sprints
-- FF to BO: 1 Sprints
-- BO to CF: 1 Sprints
-- CF to GA: 4 Weeks
+- FF behind RF: 6 sprints
+- BO behind FF: 1 sprints
+- CF behind BO: 1 sprints
+- GA behind CF: 4 weeks
+
+# Status
+## Phases & Milestones
 
 $
 ```
@@ -55,6 +69,9 @@ $
 Create a new draft schedule
 
 ```console
+$ cargo run -- example > project-skeleton.yaml
+    Finished dev [unoptimized + debuginfo] target(s) in 0.07s
+     Running `target/debug/deltasched example`
 $ cargo run -- -o human new --name kubevirt-1.1 --from-skeleton project-skeleton.yaml --with-due-date GA:2023-10-31
     Finished dev [unoptimized + debuginfo] target(s) in 0.06s
      Running `target/debug/deltasched -o human new --name kubevirt-1.1 --from-skeleton project-skeleton.yaml --with-due-date 'GA:2023-10-31'`
