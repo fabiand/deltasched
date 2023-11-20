@@ -23,8 +23,8 @@ fn main() {
 //                output = format!("{}", &schedfmt.as_yaml(&sched));
             },
             OutputFormat::Human => {
-                output = format!("{}", &sched);
-//                output = format!("{}", &schedfmt.as_text(&sched));
+//                output = format!("{}", &sched);
+                output = format!("{}", &schedfmt.as_text(&sched));
             }/*,
             OutputFormat::MermaidGantt => {
                 output = format!("{}", gantt::MermaidGanttPrinter(&sched));
