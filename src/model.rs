@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 fn no_naivedate() -> Option<NaiveDate> { None }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Milestone {
     pub name: String,
     pub alias: String,
