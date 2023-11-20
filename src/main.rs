@@ -7,7 +7,8 @@ use crate::cli::*;
 mod model;
 use crate::model::*;
 
-                use serde_yaml;
+mod printer;
+
 mod gantt;
 
 fn main() {
@@ -16,14 +17,13 @@ fn main() {
     let args = Args::parse();
 
     let print_schedule = |sched: &Document| {
+        let schedfmt = printer::ScheduleFormatter::new();
         let output;
         match args.output {
             OutputFormat::Yaml => {
-                output = format!("{}", serde_yaml::to_string(&sched).unwrap())
-//                output = format!("{}", &schedfmt.as_yaml(&sched));
+                output = format!("{}", &schedfmt.as_yaml(&sched));
             },
             OutputFormat::Human => {
-//                output = format!("{}", &sched);
                 output = format!("{}", &schedfmt.as_text(&sched));
             }/*,
             OutputFormat::MermaidGantt => {

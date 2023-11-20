@@ -2,25 +2,39 @@ use serde_yaml;
 
 use crate::model::*;
 
-pub struct ScheduleFormatter{}
+pub struct ScheduleFormatter{
+    verbose: bool,
+    display_unplanned_milestones: bool
+}
 
 impl ScheduleFormatter {
+    pub fn new() -> ScheduleFormatter {
+        ScheduleFormatter {
+            verbose: false,
+            display_unplanned_milestones: false
+        }
+    }
+
     pub fn as_yaml(&self, sched: &Document) -> String {
         format!("{}", serde_yaml::to_string(&sched).unwrap())
     }
 
     pub fn as_text(&self, sched: &Document) -> String {
-        let mut text = TextSchedule::new();
+        let mut text = TextSchedule::new(self.verbose);
         format!("{}", text.format(sched))
     }
 }
 
 pub struct TextSchedule {
+    verbose: bool,
+    display_unplanned_milestones: bool
 }
 
 impl TextSchedule {
-    pub fn new() -> TextSchedule {
+    pub fn new(verbose: bool) -> TextSchedule {
         TextSchedule {
+            verbose,
+            display_unplanned_milestones: true
         }
     }
     pub fn format(&mut self, doc: &Document) -> String {
@@ -30,11 +44,13 @@ impl TextSchedule {
     fn visit_document(&mut self, doc: &Document) -> String {
         let mut text = Vec::new();
         text.push(format!("# Kind"));
-        text.push(format!("kind: {}\n", &doc.kind));
-        text.push(format!("# Metadata"));
-        text.push(format!("{}", serde_yaml::to_string(&doc.metadata).unwrap()));
-        text.push(format!("# Spec"));
-        text.push(self.visit_schedule(&doc.spec));
+        text.push(format!("kind: {}", &doc.kind));
+        if self.verbose {
+            text.push(format!("\n# Metadata"));
+            text.push(format!("{}", serde_yaml::to_string(&doc.metadata).unwrap()));
+            text.push(format!("# Spec"));
+            text.push(self.visit_schedule(&doc.spec));
+        }
         text.push(format!("\n# Status"));
         text.push(format!("## Phases & Milestones"));
         if doc.status.is_some() {
