@@ -39,8 +39,8 @@ impl TextSchedule {
         text.push(format!("## Phases & Milestones"));
         if doc.status.is_some() {
             for p in &doc.status.as_ref().unwrap().phases {
-                text.push(String::from("\n"));
                 text.push(self.visit_phase(&p));
+                text.push(String::from(""));
             }
         }
         text.join("\n")
@@ -48,10 +48,10 @@ impl TextSchedule {
 
     fn visit_milestone(&mut self, m: &Milestone) -> String {
         let due_date = if m.due_date.is_none()
-          { String::from("---------- ---") }
+          { String::from("????-??-?? ???") }
           else
           { format!("{}", m.due_date.unwrap().format("%Y-%m-%d %a")) };
-        format!(" {}   {}   {}", due_date, m.alias, m.name)
+        format!("  -  {}   {}   {}", due_date, m.alias, m.name)
     }
 
     fn visit_milestone_generator(&mut self, m: &MilestoneGenerator) -> String {
@@ -60,7 +60,7 @@ impl TextSchedule {
 
     fn visit_phase(&mut self, p: &Phase) -> String {
         let mut text = Vec::new();
-        text.push(format!("{}", p.name));
+        text.push(format!("- {}", p.name));
         for ms in &p.milestones {
             text.push(self.visit_milestone(&ms));
         };
@@ -71,8 +71,8 @@ impl TextSchedule {
         let mut text = Vec::new();
         text.push(format!("## Phases & Milestones"));
         for p in &s.phases {
-            text.push(String::from("\n"));
             text.push(self.visit_phase(&p));
+            text.push(String::from(""));
         }
 
         text.push(format!("## Baseline Deltas"));
