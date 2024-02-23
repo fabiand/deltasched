@@ -10,6 +10,17 @@ use crate::model::*;
                 use serde_yaml;
 mod gantt;
 
+use wasm_bindgen::prelude::*;
+#[wasm_bindgen]
+extern {
+    pub fn alert(s: &str);
+}
+#[wasm_bindgen]
+pub fn greet(name: &str) {
+    alert(&format!("Hello, {} from delta!", name));
+}
+
+
 fn main() {
     env_logger::init();
 
@@ -56,4 +67,28 @@ fn main() {
         }
     }
     print_schedule(&sched);
+}
+
+
+#[wasm_bindgen]
+pub struct WasmSched {
+    doc: Document
+}
+
+#[wasm_bindgen]
+impl WasmSched {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> WasmSched {
+        WasmSched {
+            doc: Document::example() //from_yaml_file(schedule);
+        }
+    }
+
+    pub fn replan(&mut self) {
+        self.doc.replan(None);
+    }
+
+    pub fn as_json_string(&self) -> String {
+        self.doc.as_json()
+    }
 }

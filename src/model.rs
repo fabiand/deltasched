@@ -3,6 +3,7 @@ use std::ops;
 use chrono::{Local,Duration,NaiveDate};
 use serde::{Serialize, Deserialize};
 use serde_yaml;
+use serde_json;
 use log::{debug};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -215,6 +216,9 @@ impl Document {
     pub fn as_yaml(&self) -> String {
         format!("{}", serde_yaml::to_string(&self).unwrap())
     }
+    pub fn as_json(&self) -> String {
+        format!("{}", serde_json::to_string(&self).unwrap())
+    }
     pub fn example() -> Document {
         Document {
             kind: "Schedule".to_string(),
@@ -339,10 +343,11 @@ impl ScheduleBuilder {
     }
     fn common_deltas() -> Vec<MilestoneRelation> {
         vec![
-            MilestoneRelation::new("GA", Where::After, "CF", SimpleDuration::Weeks{weeks: 4}),
-            MilestoneRelation::new("CF", Where::After, "BO", SimpleDuration::Sprints{sprints: 1}),
-            MilestoneRelation::new("BO", Where::After, "FF", SimpleDuration::Sprints{sprints: 1}),
-            MilestoneRelation::new("FF", Where::After, "RF", SimpleDuration::Sprints{sprints: 6}),
+            MilestoneRelation::new("CF", Where::Before, "GA", SimpleDuration::Weeks{weeks: 4}),
+            MilestoneRelation::new("PS", Where::Before, "GA", SimpleDuration::Sprints{sprints: 1}),
+            MilestoneRelation::new("BO", Where::Before, "CF", SimpleDuration::Sprints{sprints: 1}),
+            MilestoneRelation::new("FF", Where::Before, "BO", SimpleDuration::Sprints{sprints: 1}),
+            MilestoneRelation::new("RF", Where::Before, "FF", SimpleDuration::Sprints{sprints: 6}),
         ]
     }
     pub fn schedule() -> Schedule {
