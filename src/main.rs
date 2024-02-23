@@ -84,6 +84,11 @@ impl WasmSched {
         }
     }
 
+    pub fn update_and_replan(&mut self, milestone_alias: String, raw_due_date: String) {
+        let due_date = NaiveDate::parse_from_str(&raw_due_date, "%Y-%m-%d").unwrap();
+        self.doc.replan(Some((&milestone_alias, due_date)));
+    }
+
     pub fn replan(&mut self) {
         self.doc.replan(None);
     }

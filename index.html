@@ -13,40 +13,95 @@
 <!-- wasm-pack build --target web -->
     <script type="module">
 
-      function buildView(sched) {
-        let view = $("#sched-view");
+      function milestonesOf(sched) {
+        let ms = []
         $(sched.status.phases).each(function() {
-          let phase = this
-          console.log("Building phase " + this.name);
-          $(phase.milestones).each(function() {
+          $(this.milestones).each(function() {
+            ms.push(this)
+          })
+        })
+        return ms
+      }
+
+      function buildView(doc) {
+        console.log("Bulding view")
+        let sched = JSON.parse(doc.as_json_string())
+
+        let view = $("#sched-view");
+
+        $(sched.status.phases).each(function() {
+          //console.log(`Building phase ${this.name}`);
+
+          $(this.milestones).each(function() {
+            if (/^z/.test(this.name)) { return }
+
+            //console.log(`Building ms ${this.name}`);
+            let row = $("<tr/>").attr("id", this.alias)
+            let cell_alias = $("<td/>").text(this.name)
+
+            let input = $("<input>")
+              .attr("type", "text")
+              .attr("class", "form-control")
+              .attr("pattern", "\\d{4}-\\d{1,2}-\\d{1,2}")
+              .attr("placeholder", this.due_date);
+
             let ms = this
-            console.log("Building ms " + ms.name);
-            let row = $(`<tr id=ms-${ms.alias}/>`)
-            row.append($("<td/>").text(ms.name))
-            let input = $("<input pattern='\\d{4}-\\d{1,2}-\\d{1,2}' />")
-            input.change(function(n) {
-              console.log(n)
-              console.log(ms.due_date)
-              ms.due_date = n.target.value
-              console.log(ms.due_date)
+            input.change(function(evnt) {
+              let due_date = $(evnt.target).val()
+              console.log(`New due for ${ms.alias}: ${due_date}`)
+              doc.update_and_replan(ms.alias, due_date)
+              updateView(doc)
             })
-            row.append($("<td id=duedate/>").append(input.attr("placeholder", ms.due_date)))
+
+            let weekday = $("<span/>")
+              .attr("class", "input-group-text col-3")
+              .text("wkd");
+
+            let inputgroup = $("<div/>")
+              .attr("class", "input-group")
+              .append(weekday)
+              .append(input)
+
+            let cell_duedate = $("<td>")
+              .append(inputgroup);
+
+            row.append(cell_alias)
+            row.append(cell_duedate)
             view.append(row);
           })
         });
 
       }
 
+      function updateView(doc) {
+        console.log("Updating view")
+        let sched = JSON.parse(doc.as_json_string())
+        console.log(sched)
+//        $("#dst").text(JSON.stringify(sched, undefined, 2))
+
+        let ms = milestonesOf(sched)
+        $(ms).each(function() {
+          if (/^z/.test(this.name)) { return }
+
+          console.log(`Display new due for ${this.alias} on ${this.due_date}`)
+          $(`#${this.alias}`)
+            .find("input").val(this.due_date);
+          $(`#${this.alias}`)
+            .find("span").text(new Date(this.due_date).toLocaleDateString("en", { weekday: 'long' }))
+        })
+      }
+
       import init, { WasmSched } from "./pkg/deltasched.js";
       init().then(() => {
       	const doc = new WasmSched()
-        //doc.from_name("bar")
-        doc.replan()
-        let sched = JSON.parse(doc.as_json_string())
-        $("#dst").text(JSON.stringify(sched, undefined, 2))
-        buildView(sched);
+        doc.replan();
+        buildView(doc);
+        updateView(doc);
       });
     </script>
+
+    <div class="container">
+    <div class="row">
     <form class="needs-validation">
     <table class="table table-bordered">
       <thead>
@@ -58,8 +113,10 @@
       <tbody id="sched-view">
       </tbody>
     </table>
-    <button>Replan</button>
     </form>
+    </div>
+    </div>
+
 <hr />
 
     <pre id="dst">
