@@ -13,9 +13,9 @@
 <!-- wasm-pack build --target web -->
     <script type="module">
 
-      function milestonesOf(sched) {
+      function milestonesOf(sched, w) {
         let ms = []
-        $(sched.status.phases).each(function() {
+        $(sched[w].phases).each(function() {
           $(this.milestones).each(function() {
             ms.push(this)
           })
@@ -33,10 +33,18 @@
           //console.log(`Building phase ${this.name}`);
 
           $(this.milestones).each(function() {
-            if (/^z/.test(this.name)) { return }
+            //if (/^z/.test(this.name)) { return }
 
-            //console.log(`Building ms ${this.name}`);
-            let row = $("<tr/>").attr("id", this.alias)
+            console.log(`Building ms ${this.name}`);
+            console.log(this)
+            let row = $("<tr/>")
+              .attr("id", this.alias)
+              .attr("class", "ds-milestone");
+
+            if (new RegExp("General|Feature").test(this.name)) {
+              row.attr("class", $(row).attr("class") + " table-primary")
+            }
+
             let cell_alias = $("<td/>").text(this.name)
 
             let input = $("<input>")
@@ -45,22 +53,19 @@
               .attr("pattern", "\\d{4}-\\d{1,2}-\\d{1,2}")
               .attr("placeholder", this.due_date);
 
-            let ms = this
-            input.change(function(evnt) {
-              let due_date = $(evnt.target).val()
-              console.log(`New due for ${ms.alias}: ${due_date}`)
-              doc.update_and_replan(ms.alias, due_date)
-              updateView(doc)
-            })
-
             let weekday = $("<span/>")
-              .attr("class", "input-group-text col-3")
+              .attr("class", "input-group-text col-3 ds-weekday")
               .text("wkd");
+
+            let remaining = $("<span/>")
+              .attr("class", "input-group-text col-3 ds-remaining")
+              .text("remaining");
 
             let inputgroup = $("<div/>")
               .attr("class", "input-group")
               .append(weekday)
               .append(input)
+              .append(remaining)
 
             let cell_duedate = $("<td>")
               .append(inputgroup);
@@ -70,51 +75,123 @@
             view.append(row);
           })
         });
-
       }
 
       function updateView(doc) {
         console.log("Updating view")
         let sched = JSON.parse(doc.as_json_string())
-        console.log(sched)
+        //console.log(sched)
 //        $("#dst").text(JSON.stringify(sched, undefined, 2))
 
-        let ms = milestonesOf(sched)
+        let ms = milestonesOf(sched, "status")
         $(ms).each(function() {
-          if (/^z/.test(this.name)) { return }
+          //if (/^z/.test(this.name)) { return }
 
           console.log(`Display new due for ${this.alias} on ${this.due_date}`)
           $(`#${this.alias}`)
             .find("input").val(this.due_date);
+
+          let wk = $(`#${this.alias}`).find("span.ds-weekday")
+          let wkName = new Date(this.due_date).toLocaleDateString("en", { weekday: 'long' })
+          wk.text(wkName)
+          if (new RegExp("Thu|Fri|Sat|Sun").test(wkName)) {
+            wk.addClass("text-bg-warning")
+          } else {
+            wk.removeClass("text-bg-warning")
+          }
+
+          let remainingDays = Math.round((new Date(this.due_date) - Date.now()) / (1000 * 3600 * 24))
+          let remaining = "-"
+          if (remainingDays > 0) { remaining = `${remainingDays} days remaining`; }
           $(`#${this.alias}`)
-            .find("span").text(new Date(this.due_date).toLocaleDateString("en", { weekday: 'long' }))
+            .find("span.ds-remaining")
+            .text(`${remaining}`)
+        })
+      }
+
+      function connectView(doc) {
+      console.log("Connecting …")
+      $("tr").each(function() {
+        console.log("conn " + $(this).text())
+        let ms_alias = $(this).find("td:first-of-type").text()
+        $(this).find("input").change(function(evnt) {
+          let due_date = $(evnt.target).val()
+          console.log(`New due for ${ms_alias}: ${due_date}`)
+          doc.update_and_replan(ms_alias, due_date)
+          updateView(doc)
+        })
+      })
+      }
+
+
+      function addReleasesView(releases) {
+        let grp = $("<div/>")
+          .attr("class", "btn-group")
+          .attr("role", "group");
+
+        $(releases.streams).each(function () {
+          console.log("Found stream: " + this.file)
+          let btn = $("<button/>")
+            .attr("type", "button")
+            .attr("class", "btn btn-primary")
+            .text(this.file)
+
+          let stFile = this.file
+          btn.on("click", function(tgt) {
+            newReleaseSelected(stFile);
+            // FIXME this can for sure be done better
+            btn.parent().find("button").each(function () { $(this).removeClass("active")})
+            btn.button("toggle")
+          });
+          grp.append(btn)
+        })
+
+        $("#release-view").append(grp)
+      }
+
+      fetch('./schedule/streams.json')
+          .then((response) => response.json())
+          .then((json) => addReleasesView(json));
+
+      function newReleaseSelected(relFile) {
+      	const doc = new WasmSched()
+        fetch(`./schedule/${relFile}`, {cache: "no-store"})
+            .then((response) => response.text())
+            .then((yml) => {
+                console.log("NEW RELEASE")
+                console.log(yml)
+                doc.from_yaml(yml)
+                doc.replan();
+                buildView(doc);
+                updateView(doc);
+                connectView(doc);
         })
       }
 
       import init, { WasmSched } from "./pkg/deltasched.js";
       init().then(() => {
-      	const doc = new WasmSched()
-        doc.replan();
-        buildView(doc);
-        updateView(doc);
+        //newReleaseSelected("4.17.yaml")
       });
     </script>
 
     <div class="container">
-    <div class="row">
-    <form class="needs-validation">
-    <table class="table table-bordered">
-      <thead>
-        <tr>
-          <th>Phase</th>
-          <th>Due Date</th>
-        </tr>
-       </thead>
-      <tbody id="sched-view">
-      </tbody>
-    </table>
-    </form>
-    </div>
+      <div class="row">
+        <div class="col p-4" id="release-view"/>
+      </div>
+      <div class="row">
+        <form class="needs-validation">
+          <table class="table table-bordered">
+            <thead>
+              <tr>
+                <th>Phase</th>
+                <th>Due Date</th>
+              </tr>
+             </thead>
+            <tbody id="sched-view">
+            </tbody>
+          </table>
+        </form>
+      </div>
     </div>
 
 <hr />

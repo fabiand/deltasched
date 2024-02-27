@@ -213,6 +213,10 @@ impl Document {
         let doc: Document = serde_yaml::from_reader(f).unwrap();
         doc
     }
+    pub fn from_yaml(yaml_data: &str) -> Document {
+        let doc: Document = serde_yaml::from_str(&yaml_data).unwrap();
+        doc
+    }
     pub fn as_yaml(&self) -> String {
         format!("{}", serde_yaml::to_string(&self).unwrap())
     }
