@@ -7,9 +7,10 @@ ENV PATH="${PATH}:/root/.cargo/bin/"
 
 ADD Cargo.* /app
 ADD src/ /app/src/
-ADD assets/ index.html favicon.ico /app/
 
 #RUN cargo build
 RUN wasm-pack build --target web
+
+ADD index.html favicon.ico /app/
 
 ENTRYPOINT python3 -m http.server
