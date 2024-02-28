@@ -33,8 +33,6 @@
           //console.log(`Building phase ${this.name}`);
 
           $(this.milestones).each(function() {
-            //if (/^z/.test(this.name)) { return }
-
             console.log(`Building ms ${this.name}`);
             console.log(this)
             let row = $("<tr/>")
@@ -79,14 +77,12 @@
 
       function updateView(doc) {
         console.log("Updating view")
+
         let sched = JSON.parse(doc.as_json_string())
-        //console.log(sched)
-//        $("#dst").text(JSON.stringify(sched, undefined, 2))
+        console.log(sched)
 
         let ms = milestonesOf(sched, "status")
         $(ms).each(function() {
-          //if (/^z/.test(this.name)) { return }
-
           console.log(`Display new due for ${this.alias} on ${this.due_date}`)
           $(`#${this.alias}`)
             .find("input").val(this.due_date);
@@ -193,11 +189,6 @@
         </form>
       </div>
     </div>
-
-<hr />
-
-    <pre id="dst">
-    </pre>
   </body>
 </html>
 
