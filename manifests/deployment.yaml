@@ -1,0 +1,38 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: deltasched-http-wasm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deltasched-http-wasm
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: deltasched-http-wasm
+    spec:
+      containers:
+        - name: container
+          image: 'quay.io/fdeutsch/deltasched:wasm'
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+              name: http
+          imagePullPolicy: Always
+          volumeMounts:
+            - name: scheds
+              mountPath: /app/schedule
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 0
+      volumes:
+        - name: scheds
+          configMap:
+            name: scheds
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%
+status: {}

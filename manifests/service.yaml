@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: deltasched-http-wasm
+  namespace: fabiand
+spec:
+  selector:
+    app: deltasched-http-wasm
+  ports:
+    - protocol: TCP
+      port: 8042
+      targetPort: 8000
+
